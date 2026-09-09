@@ -1,6 +1,4 @@
 import asyncio
-import logging
-from datetime import datetime, timedelta
 
 from aiogram import Router, F, Bot, types
 from aiogram.exceptions import TelegramBadRequest
@@ -16,8 +14,6 @@ import keyboards as kb
 import pricing
 import channels
 from states import BuyProduct
-
-logger = logging.getLogger(__name__)
 
 # Premium Custom Emoji ID
 GIFT_PREMIUM_EMOJI_ID = "5368324170671202286"
@@ -55,23 +51,8 @@ ALL_EMOJI_IDS = {
 }
 
 router = Router()
-sub_cache = {}  # {user_id: (is_subscribed, timestamp)}
-payment_timer_tasks = {}  # {user_id: (task, timestamp)}
-
-# Cache timeout constants (minutes)
-SUB_CACHE_TIMEOUT = 5
-PAYMENT_TIMER_TIMEOUT = 10
-
-def cleanup_expired_cache():
-    """Remove expired entries from caches"""
-    now = datetime.now()
-    expired_users = [uid for uid, (_, ts) in sub_cache.items() if (now - ts).total_seconds() > SUB_CACHE_TIMEOUT * 60]
-    for uid in expired_users:
-        sub_cache.pop(uid, None)
-    
-    expired_tasks = [uid for uid, (_, ts) in payment_timer_tasks.items() if (now - ts).total_seconds() > PAYMENT_TIMER_TIMEOUT * 60]
-    for uid in expired_tasks:
-        payment_timer_tasks.pop(uid, None)
+sub_cache = {}
+payment_timer_tasks = {}
 
 
 
@@ -182,8 +163,7 @@ async def payment_countdown(message: types.Message, state: FSMContext, user_id: 
             )
     except asyncio.CancelledError:
         raise
-    except Exception as e:
-        logger.error(f"Payment countdown error: {e}")
+    except Exception:
         return
     finally:
         if payment_timer_tasks.get(user_id) is asyncio.current_task():
@@ -191,10 +171,8 @@ async def payment_countdown(message: types.Message, state: FSMContext, user_id: 
 
 # Kanallarga obunani tekshirish (keshli)
 async def check_subscription(bot: Bot, user_id: int) -> bool:
-    cleanup_expired_cache()
     if user_id in sub_cache:
-        is_sub, _ = sub_cache[user_id]
-        return is_sub
+        return sub_cache[user_id]
     try:
         is_sub = True
         for channel_id in channels.get_channels():
@@ -206,10 +184,9 @@ async def check_subscription(bot: Bot, user_id: int) -> bool:
                 is_sub = False
                 break
         if is_sub:
-            sub_cache[user_id] = (True, datetime.now())
+            sub_cache[user_id] = True
         return is_sub
-    except Exception as e:
-        logger.error(f"Subscription check error for user {user_id}: {e}")
+    except Exception:
         return False
 
 
@@ -277,7 +254,7 @@ async def cmd_start(message: types.Message, bot: Bot, state: FSMContext, command
 async def process_check_sub(callback: types.CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
     if user_id in sub_cache:
-        sub_cache.pop(user_id, None)
+        del sub_cache[user_id]
         
     is_admin = user_id in [config.ADMIN_ID, config.ADMIN_ID_2]
 
@@ -468,7 +445,7 @@ async def show_stats(callback: types.CallbackQuery):
     kb_stats = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="Yangilash", callback_data="bot_stats", icon_custom_emoji_id="5370715282044100355"),
-            InlineKeyboardButton(text="Orqaga", callback_data="back_to_main", icon_custom_emoji_id="5305762853505762834723731363472373136")
+            InlineKeyboardButton(text="Orqaga", callback_data="back_to_main", icon_custom_emoji_id="530576283472373136")
         ],
         [
             InlineKeyboardButton(text="📅 Oylik statistika", callback_data="monthly_stats")
@@ -505,7 +482,7 @@ async def show_monthly_stats(callback: types.CallbackQuery):
     kb_monthly = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🔄 Yangilash", callback_data="monthly_stats"),
-            InlineKeyboardButton(text="Orqaga", callback_data="bot_stats", icon_custom_emoji_id="5350576283472373136")
+            InlineKeyboardButton(text="Orqaga", callback_data="bot_stats", icon_custom_emoji_id="530576283472373136")
         ]
     ])
 
@@ -565,7 +542,7 @@ async def show_top_rating(callback: types.CallbackQuery):
     kb_top = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="Yangilash", callback_data="top_rating", icon_custom_emoji_id="5370715282044100355"),
-            InlineKeyboardButton(text="Orqaga", callback_data="back_to_main", icon_custom_emoji_id="5350576283472373136")
+            InlineKeyboardButton(text="Orqaga", callback_data="back_to_main", icon_custom_emoji_id="530576283472373136")
         ]
     ])
     await safe_edit_message(callback.message, text=caption, reply_markup=kb_top, parse_mode="HTML")
@@ -1035,7 +1012,6 @@ async def price_editor_back(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("price_edit:"))
 async def select_price_to_edit(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id not in [config.ADMIN_ID, config.ADMIN_ID_2]:
-        logger.warning(f"Unauthorized price edit attempt by user {callback.from_user.id}")
         await callback.answer("Ruxsat yo'q", show_alert=True)
         return
 
@@ -1073,7 +1049,6 @@ async def save_edited_price(message: types.Message, state: FSMContext):
 
     data = await state.get_data()
     pricing.update_price(data["price_category"], data["price_key"], int(raw_price))
-    logger.info(f"Admin {message.from_user.id} changed price {data['price_category']}/{data['price_key']} to {raw_price}")
     await state.clear()
     await message.answer(
         f"✅ Narx yangilandi: <b>{pricing.format_price(int(raw_price))} so'm</b>",
@@ -1084,7 +1059,6 @@ async def save_edited_price(message: types.Message, state: FSMContext):
 @router.message(F.text == "📢 Barchaga xabar yuborish")
 async def start_broadcast(message: types.Message, state: FSMContext):
     if message.from_user.id not in [config.ADMIN_ID, config.ADMIN_ID_2]:
-        logger.warning(f"Unauthorized broadcast attempt by user {message.from_user.id}")
         return
         
     await state.set_state(AdminBroadcast.waiting_for_message)
@@ -1114,11 +1088,9 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
         try:
             await message.copy_to(chat_id=u_id)
             count += 1
-        except Exception as e:
-            logger.error(f"Failed to send broadcast to {u_id}: {e}")
+        except Exception:
             blocked_count += 1
             
-    logger.info(f"Broadcast completed by admin {message.from_user.id}: {count} successful, {blocked_count} blocked")
     await message.answer(
         f"✅ <b>Xabar yuborish yakunlandi!</b>\n\n"
         f"📨 Muvaffaqiyatli yetib bordi: <b>{count} ta</b>\n"
@@ -1131,7 +1103,6 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
 @router.message(F.text == "📢 Kanal qo'shish")
 async def request_channel_add(message: types.Message, state: FSMContext):
     if message.from_user.id not in [config.ADMIN_ID, config.ADMIN_ID_2]:
-        logger.warning(f"Unauthorized channel add attempt by user {message.from_user.id}")
         return
     await state.set_state(AdminChannelAdd.waiting_for_channel)
     await message.answer(
@@ -1147,7 +1118,6 @@ async def request_channel_add(message: types.Message, state: FSMContext):
 @router.message(F.text == "🗑 Kanalni o'chirish")
 async def show_channel_remover(message: types.Message):
     if message.from_user.id not in [config.ADMIN_ID, config.ADMIN_ID_2]:
-        logger.warning(f"Unauthorized channel remove attempt by user {message.from_user.id}")
         return
     removable = [
         channel_id for channel_id in channels.get_channels()
@@ -1188,7 +1158,6 @@ async def remove_selected_channel(callback: types.CallbackQuery):
     channel_id = callback.data.split(":", 1)[1]
     if channels.remove_channel(channel_id):
         sub_cache.clear()
-        logger.info(f"Admin {callback.from_user.id} removed channel {channel_id}")
         await callback.answer("Kanal o'chirildi")
     else:
         await callback.answer("Asosiy kanalni o'chirib bo'lmaydi", show_alert=True)
@@ -1232,7 +1201,6 @@ async def save_new_channel(message: types.Message, state: FSMContext, bot: Bot):
 
     await state.clear()
     sub_cache.clear()
-    logger.info(f"Admin {message.from_user.id} added channel {channel_id}")
     channel_list = "\n".join(f"{index}. {item}" for index, item in enumerate(channels.get_channels(), 1))
     await message.answer(
         f"✅ Kanal qo'shildi: <b>{channel_id}</b>\n\n"

@@ -110,42 +110,35 @@ async def add_user(user_id: int, username: str, full_name: str):
 
 async def export_orders_to_csv():
     """Barcha buyurtmalarni admin uchun CSV fayliga yozib boradi."""
-    import logging
-    logger = logging.getLogger(__name__)
-    
     base_dir = os.path.dirname(os.path.abspath(__file__))
     log_path = os.path.join(base_dir, LOG_FILE_NAME)
 
-    try:
-        async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("""
-                SELECT id, user_id, product_name, price, target_username, photo_id, file_type, approved_num, status, created_at
-                FROM orders
-                ORDER BY id ASC
-            """) as cursor:
-                rows = await cursor.fetchall()
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("""
+            SELECT id, user_id, product_name, price, target_username, photo_id, file_type, approved_num, status, created_at
+            FROM orders
+            ORDER BY id ASC
+        """) as cursor:
+            rows = await cursor.fetchall()
 
-        with open(log_path, "w", newline="", encoding="utf-8") as csv_file:
-            writer = csv.writer(csv_file)
-            writer.writerow([
-                "id",
-                "user_id",
-                "product_name",
-                "price",
-                "target_username",
-                "photo_id",
-                "file_type",
-                "approved_num",
-                "status",
-                "created_at",
-            ])
-            for row in rows:
-                writer.writerow(row)
+    with open(log_path, "w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow([
+            "id",
+            "user_id",
+            "product_name",
+            "price",
+            "target_username",
+            "photo_id",
+            "file_type",
+            "approved_num",
+            "status",
+            "created_at",
+        ])
+        for row in rows:
+            writer.writerow(row)
 
-        logger.info(f"CSV export successful: {len(rows)} orders")
-        return log_path
-    except Exception as e:
-        logger.error(f"CSV export failed: {e}")
+    return log_path
 
 
 async def reset_all_activity():

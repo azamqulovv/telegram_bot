@@ -219,7 +219,7 @@ def admin_main_kb():
                 KeyboardButton(text="🗑 Kanalni o'chirish")
             ],
             [
-                KeyboardButton(text="⬅️ Orqaga", icon_custom_emoji_id="5350576283472373136")
+                KeyboardButton(text="⬅️ Orqaga", icon_custom_emoji_id="530576283472373136")
             ]
         ],
         resize_keyboard=True
