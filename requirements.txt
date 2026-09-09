@@ -1,0 +1,8 @@
+# Telegram Bot Framework
+aiogram==3.13.0
+
+# Environment Configuration
+python-dotenv==1.0.0
+
+# Async SQLite Database
+aiosqlite==0.20.0

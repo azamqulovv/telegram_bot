@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+
+bot_database.db
+bot_database.db-*
+admin_orders_log.csv
+__pycache__/
+*.py[cod]
+*.tmp
+*.log
